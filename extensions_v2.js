@@ -330,6 +330,7 @@ export const FileUploadExtension = {
 
     element.appendChild(fileUploadContainer)
   },
+  window.FileUploadExtension = FileUploadExtension;
 }
 
 export const KBUploadExtension = {
