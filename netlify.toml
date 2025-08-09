@@ -1,17 +1,14 @@
 # netlify.toml
 
 [build]
-# Directory to deploy (optional, defaults to root if not specified)
-publish = "public"  # Use this if your files are in a 'public' folder; otherwise, omit or set to "."
-
-# Optional build command (e.g., if using a static site generator)
-command = "echo No build needed"  # Adjust if you have a build step
+# Use the root directory as the publish directory
+publish = "."
+# No build command needed for static files
+command = "echo No build needed"
 
 [[headers]]
 # Apply headers to all .js files
 for = "*.js"
 [headers.values]
-  # Allow cross-origin requests
   Access-Control-Allow-Origin = "*"
-  # Ensure the file is served as JavaScript
   Content-Type = "application/javascript"
