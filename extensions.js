@@ -257,76 +257,91 @@ export const TimerExtension = {
   },
 }
 
-export const FileUploadExtension = {
-  name: 'FileUpload',
-  type: 'response',
-  match: ({ trace }) =>
-    trace.type === 'ext_fileUpload' || trace.payload?.name === 'ext_fileUpload',
-  render: ({ trace, element }) => {
-    const fileUploadContainer = document.createElement('div')
-    fileUploadContainer.innerHTML = `
-      <style>
-        .my-file-upload {
-          border: 2px dashed rgba(46, 110, 225, 0.3);
-          padding: 20px;
-          text-align: center;
-          cursor: pointer;
+// /extensions.js
+// Defines window.FileUploadExtension and uses interact({ action }) on success/fail.
+
+(function () {
+  function log(...a) { try { console.log('[FileUploadExtension]', ...a); } catch {} }
+
+  // Demo uploader: returns fake "keys" so you can verify the Voiceflow wiring.
+  // Replace with your real uploader that returns [{ key, name, size, mime }]
+  async function fakeUpload(fileList) {
+    return Array.from(fileList).map((f, i) => ({
+      key: `demo_${Date.now()}_${i}_${(f.name||'file').replace(/\W+/g,'_')}`,
+      name: f.name, size: f.size, mime: f.type
+    }));
+  }
+
+  // Heuristic: infer doc role from filename so your VF code can map types
+  function inferRole(name, idx) {
+    const n = String(name || '').toLowerCase();
+    if (/(back|rear)/.test(n)) return 'license_back';
+    if (/(insur)/.test(n))    return 'insurance';
+    if (/(front)/.test(n))    return 'license_front';
+    return ['license_front','license_back','insurance'][idx] || 'license_front';
+  }
+
+  // --- The extension that your index.html registers ---
+  window.FileUploadExtension = {
+    name: 'FileUpload',
+    type: 'response',
+    match: ({ trace }) => trace?.type === 'FileUpload' || trace?.payload?.name === 'FileUpload',
+    render: ({ element }) => {
+      // simple UI
+      element.innerHTML = '';
+      const box = document.createElement('div');
+      Object.assign(box.style, { padding:'12px', border:'2px dashed #c9c9c9', borderRadius:'12px', textAlign:'center' });
+
+      box.insertAdjacentHTML('beforeend', `<div style="font-weight:600;margin-bottom:8px">
+        Upload license (front/back) and insurance
+      </div>`);
+
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.accept = '.pdf,.jpg,.jpeg,.png';
+      box.appendChild(input);
+
+      const btn = document.createElement('button');
+      btn.textContent = 'Upload';
+      btn.style.display = 'block';
+      btn.style.margin = '10px auto 0';
+      box.appendChild(btn);
+
+      const msg = document.createElement('div');
+      Object.assign(msg.style, { marginTop:'8px', fontSize:'12px', opacity:'0.85' });
+      box.appendChild(msg);
+
+      btn.onclick = async () => {
+        try {
+          msg.textContent = '';
+          if (!input.files?.length) throw new Error('no_files');
+
+          // TODO: replace fakeUpload with your real uploader
+          const uploaded = await fakeUpload(input.files);
+
+          // add type hints the VF flow expects
+          const files = uploaded.map((u, i) => ({ ...u, type: u.type || inferRole(u.name, i) }));
+
+          // >>> THIS is the critical line <<<
+          window.voiceflow.chat.interact({ action: { type: 'Default', payload: { files } } });
+
+          log('sent Default with files', files);
+        } catch (err) {
+          msg.textContent = 'Upload failed. Please try again.';
+          window.voiceflow.chat.interact({ action: { type: 'Fail', payload: { error: String(err) } } });
+          log('sent Fail', err);
         }
-      </style>
-      <div class='my-file-upload'>Drag and drop a file here or click to upload</div>
-      <input type='file' style='display: none;'>
-    `
+      };
 
-    const fileInput = fileUploadContainer.querySelector('input[type=file]')
-    const fileUploadBox = fileUploadContainer.querySelector('.my-file-upload')
+      element.appendChild(box);
 
-    fileUploadBox.addEventListener('click', function () {
-      fileInput.click()
-    })
+      // cleanup when the step ends
+      return () => { element.innerHTML = ''; };
+    }
+  };
+})();
 
-    fileInput.addEventListener('change', function () {
-      const file = fileInput.files[0]
-      console.log('File selected:', file)
-
-      fileUploadContainer.innerHTML = `<img src="https://s3.amazonaws.com/com.voiceflow.studio/share/upload/upload.gif" alt="Upload" width="50" height="50">`
-
-      var data = new FormData()
-      data.append('file', file)
-
-      fetch('https://tmpfiles.org/api/v1/upload', {
-        method: 'POST',
-        body: data,
-      })
-        .then((response) => {
-          if (response.ok) {
-            return response.json()
-          } else {
-            throw new Error('Upload failed: ' + response.statusText)
-          }
-        })
-        .then((result) => {
-          fileUploadContainer.innerHTML =
-            '<img src="https://s3.amazonaws.com/com.voiceflow.studio/share/check/check.gif" alt="Done" width="50" height="50">'
-          console.log('File uploaded:', result.data.url)
-          window.voiceflow.chat.interact({
-            type: 'complete',
-            payload: {
-              file: result.data.url.replace(
-                'https://tmpfiles.org/',
-                'https://tmpfiles.org/dl/'
-              ),
-            },
-          })
-        })
-        .catch((error) => {
-          console.error(error)
-          fileUploadContainer.innerHTML = '<div>Error during upload</div>'
-        })
-    })
-
-    element.appendChild(fileUploadContainer)
-  },
-}
 
 export const KBUploadExtension = {
   name: 'KBUpload',
