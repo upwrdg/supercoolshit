@@ -307,7 +307,9 @@ export const TimerExtension = {
           const api = window.voiceflow && window.voiceflow.chat && window.voiceflow.chat.interact;
           if (!api) { msg.textContent = 'Widget not ready (interact missing).'; log('interact missing'); return; }
 
+          const files = uploaded.map((u, i) => ({ ...u, type: u.type || inferRole(u.name, i) })); // keep your inferRole if you have it
           window.voiceflow.chat.interact({ action: { type: 'Default', payload: { files } } });
+
           log('interact sent');
         } catch (err) {
           console.error('[EXT] FAIL', err);
