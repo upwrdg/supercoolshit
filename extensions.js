@@ -261,15 +261,7 @@ export const TimerExtension = {
 <!-- /extensions.js -->
 <script>
 (function () {
-  function log(...a){ try{ console.log('[FileUploadExtension]', ...a); }catch{} }
-
-  // Replace this with your real uploader that returns [{ key, name, size, mime }]
-  async function fakeUpload(fileList) {
-    return Array.from(fileList).map((f, i) => ({
-      key: `demo_${Date.now()}_${i}_${(f.name||'file').replace(/\W+/g,'_')}`,
-      name: f.name, size: f.size, mime: f.type
-    }));
-  }
+  function log(...a){ try{ console.log('[EXT]', ...a); }catch{} }
 
   function inferRole(name, idx) {
     const n = String(name||'').toLowerCase();
@@ -279,40 +271,50 @@ export const TimerExtension = {
     return ['license_front','license_back','insurance'][idx] || 'license_front';
   }
 
-  // IMPORTANT: The name must match the Custom Action Name in Voiceflow.
+  // NOTE: no remote upload here—returns demo keys so we can validate the flow
+  function makeDescriptors(fileList) {
+    return Array.from(fileList).map((f, i) => ({
+      key: `local_${Date.now()}_${i}_${(f.name||'file').replace(/\W+/g,'_')}`,
+      name: f.name,
+      size: f.size,
+      mime: f.type,
+      type: inferRole(f.name, i)
+    }));
+  }
+
   window.FileUploadExtension = {
     name: 'FileUpload',
     type: 'response',
-    match: ({ trace }) => trace?.type === 'FileUpload',
+    match: ({ trace }) => trace?.type === 'custom' ? trace?.payload?.name === 'FileUpload' : trace?.type === 'FileUpload',
     render: ({ element }) => {
       element.innerHTML = '';
       const box = document.createElement('div');
       Object.assign(box.style, { padding:'12px', border:'2px dashed #c9c9c9', borderRadius:'12px', textAlign:'center' });
       box.insertAdjacentHTML('beforeend', `<div style="font-weight:600;margin-bottom:8px">Upload license (front/back) and insurance</div>`);
-
       const input = document.createElement('input');
       input.type = 'file'; input.multiple = true; input.accept = '.pdf,.jpg,.jpeg,.png';
       const btn = document.createElement('button'); btn.textContent = 'Upload'; btn.style.marginTop = '10px';
       const msg = document.createElement('div'); msg.style.cssText = 'margin-top:8px;font-size:12px;opacity:.85';
 
-      btn.onclick = async () => {
+      btn.onclick = () => {
         try {
           msg.textContent = '';
-          if (!input.files?.length) throw new Error('no_files');
+          if (!input.files?.length) { msg.textContent = 'Select files first.'; return; }
 
-          // TODO: swap to your real upload (S3/API/etc.)
-          const uploaded = await fakeUpload(input.files);
+          const files = makeDescriptors(input.files);
+          log('about to interact Default with files =', files);
 
-          // Ensure the downstream flow can map roles
-          const files = uploaded.map((u, i) => ({ ...u, type: u.type || inferRole(u.name, i) }));
+          const api = window.voiceflow && window.voiceflow.chat && window.voiceflow.chat.interact;
+          if (!api) { msg.textContent = 'Widget not ready (interact missing).'; log('interact missing'); return; }
 
-          // >>> This hands control back to your Voiceflow diagram <<<
           window.voiceflow.chat.interact({ action: { type: 'Default', payload: { files } } });
-          log('sent Default', files);
+          log('interact sent');
         } catch (err) {
-          msg.textContent = 'Upload failed. Please try again.';
-          window.voiceflow.chat.interact({ action: { type: 'Fail', payload: { error: String(err) } } });
-          log('sent Fail', err);
+          console.error('[EXT] FAIL', err);
+          msg.textContent = 'Upload failed. See console.';
+          try {
+            window.voiceflow?.chat?.interact?.({ action: { type: 'Fail', payload: { error: String(err) } } });
+          } catch {}
         }
       };
 
