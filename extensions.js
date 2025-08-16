@@ -257,14 +257,13 @@ export const TimerExtension = {
   },
 }
 
-// /extensions.js
-// Defines window.FileUploadExtension and uses interact({ action }) on success/fail.
-
+  
+<!-- /extensions.js -->
+<script>
 (function () {
-  function log(...a) { try { console.log('[FileUploadExtension]', ...a); } catch {} }
+  function log(...a){ try{ console.log('[FileUploadExtension]', ...a); }catch{} }
 
-  // Demo uploader: returns fake "keys" so you can verify the Voiceflow wiring.
-  // Replace with your real uploader that returns [{ key, name, size, mime }]
+  // Replace this with your real uploader that returns [{ key, name, size, mime }]
   async function fakeUpload(fileList) {
     return Array.from(fileList).map((f, i) => ({
       key: `demo_${Date.now()}_${i}_${(f.name||'file').replace(/\W+/g,'_')}`,
@@ -272,61 +271,44 @@ export const TimerExtension = {
     }));
   }
 
-  // Heuristic: infer doc role from filename so your VF code can map types
   function inferRole(name, idx) {
-    const n = String(name || '').toLowerCase();
+    const n = String(name||'').toLowerCase();
     if (/(back|rear)/.test(n)) return 'license_back';
     if (/(insur)/.test(n))    return 'insurance';
     if (/(front)/.test(n))    return 'license_front';
     return ['license_front','license_back','insurance'][idx] || 'license_front';
   }
 
-  // --- The extension that your index.html registers ---
+  // IMPORTANT: The name must match the Custom Action Name in Voiceflow.
   window.FileUploadExtension = {
     name: 'FileUpload',
     type: 'response',
-    match: ({ trace }) => trace?.type === 'FileUpload' || trace?.payload?.name === 'FileUpload',
+    match: ({ trace }) => trace?.type === 'FileUpload',
     render: ({ element }) => {
-      // simple UI
       element.innerHTML = '';
       const box = document.createElement('div');
       Object.assign(box.style, { padding:'12px', border:'2px dashed #c9c9c9', borderRadius:'12px', textAlign:'center' });
-
-      box.insertAdjacentHTML('beforeend', `<div style="font-weight:600;margin-bottom:8px">
-        Upload license (front/back) and insurance
-      </div>`);
+      box.insertAdjacentHTML('beforeend', `<div style="font-weight:600;margin-bottom:8px">Upload license (front/back) and insurance</div>`);
 
       const input = document.createElement('input');
-      input.type = 'file';
-      input.multiple = true;
-      input.accept = '.pdf,.jpg,.jpeg,.png';
-      box.appendChild(input);
-
-      const btn = document.createElement('button');
-      btn.textContent = 'Upload';
-      btn.style.display = 'block';
-      btn.style.margin = '10px auto 0';
-      box.appendChild(btn);
-
-      const msg = document.createElement('div');
-      Object.assign(msg.style, { marginTop:'8px', fontSize:'12px', opacity:'0.85' });
-      box.appendChild(msg);
+      input.type = 'file'; input.multiple = true; input.accept = '.pdf,.jpg,.jpeg,.png';
+      const btn = document.createElement('button'); btn.textContent = 'Upload'; btn.style.marginTop = '10px';
+      const msg = document.createElement('div'); msg.style.cssText = 'margin-top:8px;font-size:12px;opacity:.85';
 
       btn.onclick = async () => {
         try {
           msg.textContent = '';
           if (!input.files?.length) throw new Error('no_files');
 
-          // TODO: replace fakeUpload with your real uploader
+          // TODO: swap to your real upload (S3/API/etc.)
           const uploaded = await fakeUpload(input.files);
 
-          // add type hints the VF flow expects
+          // Ensure the downstream flow can map roles
           const files = uploaded.map((u, i) => ({ ...u, type: u.type || inferRole(u.name, i) }));
 
-          // >>> THIS is the critical line <<<
+          // >>> This hands control back to your Voiceflow diagram <<<
           window.voiceflow.chat.interact({ action: { type: 'Default', payload: { files } } });
-
-          log('sent Default with files', files);
+          log('sent Default', files);
         } catch (err) {
           msg.textContent = 'Upload failed. Please try again.';
           window.voiceflow.chat.interact({ action: { type: 'Fail', payload: { error: String(err) } } });
@@ -334,9 +316,9 @@ export const TimerExtension = {
         }
       };
 
+      box.appendChild(input); box.appendChild(btn); box.appendChild(msg);
       element.appendChild(box);
 
-      // cleanup when the step ends
       return () => { element.innerHTML = ''; };
     }
   };
